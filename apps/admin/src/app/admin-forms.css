@@ -1,0 +1,84 @@
+.admin-editor-form select,
+.admin-editor-form textarea,
+.admin-editor-form input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+  border: 1px solid color-mix(in srgb, #d6d3d1 78%, #ffffff);
+  border-radius: 14px;
+  background: color-mix(in srgb, #ffffff 92%, #f5f5f4);
+  box-shadow: 0 1px 2px rgba(12, 10, 9, 0.05);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.admin-editor-form select:hover,
+.admin-editor-form textarea:hover,
+.admin-editor-form input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):hover {
+  border-color: #a8a29e;
+}
+
+.admin-editor-form select:focus,
+.admin-editor-form textarea:focus,
+.admin-editor-form input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus {
+  outline: none;
+  border-color: color-mix(in srgb, #d9232f 66%, #ffffff);
+  box-shadow: 0 0 0 4px rgba(217, 35, 47, 0.12), 0 6px 18px rgba(217, 35, 47, 0.08);
+}
+
+.admin-editor-form select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #78716c 50%),
+    linear-gradient(135deg, #78716c 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 2px),
+    calc(100% - 12px) calc(50% - 2px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 2.25rem;
+}
+
+.admin-editor-form select[multiple] {
+  background-image: none;
+  padding-right: 1rem;
+}
+
+.admin-editor-form input[type="file"] {
+  padding: 0.45rem 0.55rem;
+}
+
+.admin-editor-form input[type="file"]::file-selector-button {
+  border: 0;
+  border-radius: 10px;
+  background: rgba(217, 35, 47, 0.12);
+  color: #991b1b;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-right: 0.7rem;
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+}
+
+.admin-editor-form input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #d9232f;
+  cursor: pointer;
+}
+
+.admin-editor-form.dark select,
+.dark .admin-editor-form select,
+.admin-editor-form.dark textarea,
+.dark .admin-editor-form textarea,
+.admin-editor-form.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.dark .admin-editor-form input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+  border-color: rgba(87, 83, 78, 0.9);
+  background: color-mix(in srgb, #1c1917 85%, #0c0a09);
+  color: #f5f5f4;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.admin-editor-form.dark select,
+.dark .admin-editor-form select {
+  background-image:
+    linear-gradient(45deg, transparent 50%, #d6d3d1 50%),
+    linear-gradient(135deg, #d6d3d1 50%, transparent 50%);
+}

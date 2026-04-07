@@ -1,0 +1,31 @@
+:root {
+  --brand-red: #d9232f;
+  --brand-red-strong: #b31822;
+  --brand-gold: #c3912e;
+  --brand-black: #0d0d0d;
+  --brand-light: #f1efeb;
+
+  /* Tailwind utility token overrides used by existing compiled classes */
+  --color-red-400: #ee4a55;
+  --color-red-500: #df2f3a;
+  --color-red-600: var(--brand-red);
+  --color-red-700: var(--brand-red-strong);
+}
+
+html,
+body {
+  background: var(--brand-light);
+}
+
+::selection {
+  background: var(--brand-red);
+  color: #fff;
+}
+
+.brand-gold {
+  color: var(--brand-gold);
+}
+
+.brand-logo-ring {
+  border-color: color-mix(in oklab, var(--brand-gold), white 35%);
+}

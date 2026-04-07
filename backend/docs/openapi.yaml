@@ -1,0 +1,283 @@
+openapi: 3.0.3
+info:
+  title: SushiMei Backend API
+  version: 1.0.0
+  description: Fiber + PostgreSQL API for Customer, Admin, and Spot panels.
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/v1/health:
+    get:
+      tags: [System]
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+  /api/v1/auth/customer/request-otp:
+    post:
+      tags: [Auth]
+      summary: Request OTP for customer login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone:
+                  type: string
+                  example: "+998901112233"
+      responses:
+        '200':
+          description: OTP sent
+  /api/v1/auth/customer/verify-otp:
+    post:
+      tags: [Auth]
+      summary: Verify OTP and issue tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone:
+                  type: string
+                code:
+                  type: string
+      responses:
+        '200':
+          description: Token pair
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeTokenPair'
+  /api/v1/auth/employee/login:
+    post:
+      tags: [Auth]
+      summary: Employee login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Token pair
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: New token pair
+  /api/v1/admin/orders:
+    get:
+      tags: [Admin Orders]
+      security:
+        - bearerAuth: []
+      summary: List orders (paginated, filtered)
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/search'
+        - $ref: '#/components/parameters/date_from'
+        - $ref: '#/components/parameters/date_to'
+        - $ref: '#/components/parameters/status'
+        - $ref: '#/components/parameters/spot_id'
+        - $ref: '#/components/parameters/payment_type'
+        - $ref: '#/components/parameters/order_type'
+        - $ref: '#/components/parameters/sort_by_orders'
+        - $ref: '#/components/parameters/sort_order'
+      responses:
+        '200':
+          description: Paginated order list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeOrders'
+  /api/v1/admin/orders/{id}/status:
+    patch:
+      tags: [Admin Orders]
+      security:
+        - bearerAuth: []
+      summary: Update order status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [RECEIVED, CONFIRMED, PREPARING, READY, ON_THE_WAY, DELIVERED, COMPLETED, CANCELLED, REJECTED]
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Updated
+  /api/v1/admin/customers:
+    get:
+      tags: [Admin Customers]
+      security:
+        - bearerAuth: []
+      summary: List customers (paginated, filtered)
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/search'
+        - $ref: '#/components/parameters/date_from'
+        - $ref: '#/components/parameters/date_to'
+        - $ref: '#/components/parameters/status'
+        - $ref: '#/components/parameters/spot_id'
+        - in: query
+          name: name
+          schema:
+            type: string
+        - in: query
+          name: phone
+          schema:
+            type: string
+        - in: query
+          name: min_total_orders
+          schema:
+            type: integer
+        - in: query
+          name: max_total_orders
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/sort_by_customers'
+        - $ref: '#/components/parameters/sort_order'
+      responses:
+        '200':
+          description: Paginated customer list
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    page:
+      in: query
+      name: page
+      schema: { type: integer, minimum: 1, default: 1 }
+    limit:
+      in: query
+      name: limit
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    search:
+      in: query
+      name: search
+      schema: { type: string }
+    date_from:
+      in: query
+      name: date_from
+      schema: { type: string, format: date }
+    date_to:
+      in: query
+      name: date_to
+      schema: { type: string, format: date }
+    status:
+      in: query
+      name: status
+      schema: { type: string }
+    spot_id:
+      in: query
+      name: spot_id
+      schema: { type: string, format: uuid }
+    payment_type:
+      in: query
+      name: payment_type
+      schema: { type: string, enum: [CARD, CASH] }
+    order_type:
+      in: query
+      name: order_type
+      schema: { type: string, enum: [DELIVERY, PICKUP, WALK_IN] }
+    sort_order:
+      in: query
+      name: sort_order
+      schema: { type: string, enum: [ASC, DESC], default: DESC }
+    sort_by_orders:
+      in: query
+      name: sort_by
+      schema: { type: string, enum: [created_at, total_amount, status, order_number], default: created_at }
+    sort_by_customers:
+      in: query
+      name: sort_by
+      schema: { type: string, enum: [created_at, bonus_balance, total_orders, last_order_at, phone], default: created_at }
+
+  schemas:
+    EnvelopeTokenPair:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/TokenPair'
+    TokenPair:
+      type: object
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        token_type: { type: string, example: Bearer }
+        expires_in_sec: { type: integer, example: 900 }
+    EnvelopeOrders:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    Order:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        order_number: { type: string }
+        status: { type: string }
+        order_type: { type: string }
+        payment_type: { type: string }
+        total_amount: { type: number }
+        customer_name: { type: string }
+        customer_phone: { type: string }
+        spot_name: { type: string }
+        created_at: { type: string, format: date-time }
+    PaginationMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        total_page: { type: integer }
+        sort_by: { type: string }
+        sort_order: { type: string }

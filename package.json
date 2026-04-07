@@ -1,0 +1,26 @@
+{
+  "name": "sushimei",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n customer,admin,staff -c blue,green,yellow \"npm run dev --workspace=@sushimei/customer\" \"npm run dev --workspace=@sushimei/admin\" \"npm run dev --workspace=@sushimei/staff\"",
+    "dev:customer": "npm run dev --workspace=@sushimei/customer",
+    "dev:admin": "npm run dev --workspace=@sushimei/admin",
+    "dev:staff": "npm run dev --workspace=@sushimei/staff",
+    "build": "npm run build --workspace=@sushimei/customer && npm run build --workspace=@sushimei/admin && npm run build --workspace=@sushimei/staff",
+    "build:customer": "npm run build --workspace=@sushimei/customer",
+    "build:admin": "npm run build --workspace=@sushimei/admin",
+    "build:staff": "npm run build --workspace=@sushimei/staff",
+    "start": "concurrently -n customer,admin,staff -c blue,green,yellow \"npm run start --workspace=@sushimei/customer\" \"npm run start --workspace=@sushimei/admin\" \"npm run start --workspace=@sushimei/staff\"",
+    "start:customer": "npm run start --workspace=@sushimei/customer",
+    "start:admin": "npm run start --workspace=@sushimei/admin",
+    "start:staff": "npm run start --workspace=@sushimei/staff"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
