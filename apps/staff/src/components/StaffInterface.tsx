@@ -136,11 +136,16 @@ export const StaffInterface = () => {
           setSelectedOrder(prev => {
             if (!prev) return null;
             const updated = newOrders.find(o => o.id === prev.id);
-            if (!updated || ['DELIVERED', 'COMPLETED', 'CANCELLED', 'REJECTED'].includes(updated.status)) return null;
+            if (!updated) return isTerminalStatus(prev.status) ? prev : null;
             return {
               ...prev,
+              customer: updated.customer_name,
+              customer_phone: updated.customer_phone,
+              type: updated.order_type,
               status: updated.status,
               time: getTimeAgo(updated.created_at),
+              total_amount: updated.total_amount,
+              created_at: updated.created_at,
             };
           });
         }
@@ -183,13 +188,17 @@ export const StaffInterface = () => {
     return 'ready';
   };
 
+  const isTerminalStatus = (status: OrderStatus) => {
+    return ['DELIVERED', 'COMPLETED', 'CANCELLED', 'REJECTED'].includes(status);
+  };
+
   const formatOrderType = (type: string) => {
     return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/\bWalk In\b/, 'Walk-in');
   };
 
   // Transform orders to queue format
   const queueOrders: QueueOrder[] = orders
-    .filter(o => !['DELIVERED', 'COMPLETED', 'CANCELLED', 'REJECTED'].includes(o.status))
+    .filter(o => !isTerminalStatus(o.status))
     .map(o => ({
       id: o.id,
       order_number: o.order_number,
@@ -204,21 +213,28 @@ export const StaffInterface = () => {
       created_at: o.created_at,
     }));
 
-  const pastOrders = orders.filter(o => ['DELIVERED', 'COMPLETED', 'CANCELLED', 'REJECTED'].includes(o.status));
+  const pastOrders = orders.filter(o => isTerminalStatus(o.status));
 
   // Status update handler
   const updateOrderStatus = async (orderId: string, newStatus: OrderStatus) => {
     try {
       const res = await spotApi.updateOrderStatus(orderId, newStatus);
       if (res.success) {
-        setOrders(orders.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
-        if (selectedOrder?.id === orderId) {
-          setSelectedOrder({ ...selectedOrder, status: newStatus });
-        }
+        setOrders(currentOrders => currentOrders.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+        setSelectedOrder(currentOrder => currentOrder?.id === orderId ? { ...currentOrder, status: newStatus } : currentOrder);
       }
     } catch (err) {
       console.error('Failed to update order status:', err);
     }
+  };
+
+  const handleFulfillmentAction = (order: Pick<QueueOrder, 'id' | 'type'>) => {
+    const nextStatus: OrderStatus = order.type === 'DELIVERY' ? 'ON_THE_WAY' : 'COMPLETED';
+    if (nextStatus === 'COMPLETED') {
+      const confirmed = window.confirm('Mark this takeaway order as handed over to the customer? It will move out of the live queue.');
+      if (!confirmed) return;
+    }
+    updateOrderStatus(order.id, nextStatus);
   };
 
   const addToManualCart = (product: Product) => {
@@ -377,9 +393,9 @@ export const StaffInterface = () => {
                   ) : queueStatus === 'ready' && (canDispatch || canManageAll) ? (
                     <Button
                       className="w-full bg-white text-black hover:bg-stone-200 border-none h-16 rounded-[20px] text-[10px] font-black uppercase tracking-widest"
-                      onClick={(e) => { e.stopPropagation(); updateOrderStatus(order.id, order.type === 'DELIVERY' ? 'ON_THE_WAY' : 'COMPLETED'); }}
+                      onClick={(e) => { e.stopPropagation(); handleFulfillmentAction(order); }}
                     >
-                      {order.type === 'DELIVERY' ? 'Dispatch Order' : 'Complete Order'}
+                      {order.type === 'DELIVERY' ? 'Dispatch Order' : 'Hand to Customer'}
                     </Button>
                   ) : (
                     <div className="flex-1 h-16 rounded-[20px] border border-stone-800/50 flex items-center justify-center text-[10px] font-black uppercase tracking-widest text-stone-600">
@@ -430,6 +446,13 @@ export const StaffInterface = () => {
                   <Button variant="outline" className="border-stone-800 rounded-3xl h-20 w-20 p-0">
                      <Printer className="w-8 h-8" />
                   </Button>
+                  <Button
+                    variant="outline"
+                    className="border-stone-800 rounded-3xl h-20 px-10 text-[10px] font-black uppercase tracking-widest"
+                    onClick={() => setSelectedOrder(null)}
+                  >
+                    Close
+                  </Button>
                 </div>
               </div>
 
@@ -470,6 +493,11 @@ export const StaffInterface = () => {
                       <Badge variant={getStatusForQueue(selectedOrder.status) === 'pending' ? 'error' : getStatusForQueue(selectedOrder.status) === 'cooking' ? 'warning' : 'success'}>
                         {selectedOrder.status}
                       </Badge>
+                      {isTerminalStatus(selectedOrder.status) && (
+                        <div className="mt-3">
+                          <Badge variant="neutral">Archived</Badge>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -499,10 +527,16 @@ export const StaffInterface = () => {
                  {getStatusForQueue(selectedOrder.status) === 'ready' && (canDispatch || canManageAll) && (
                    <Button
                      className="h-28 px-16 text-xs font-black uppercase tracking-[0.4em] rounded-[40px] bg-red-600 hover:bg-red-700 flex-none shadow-3xl shadow-red-600/30"
-                     onClick={() => updateOrderStatus(selectedOrder.id, selectedOrder.type === 'DELIVERY' ? 'ON_THE_WAY' : 'COMPLETED')}
+                     onClick={() => handleFulfillmentAction(selectedOrder)}
                    >
-                     {selectedOrder.type === 'DELIVERY' ? 'Dispatch' : 'Complete'} <ArrowRight className="ml-6 w-10 h-10" />
+                     {selectedOrder.type === 'DELIVERY' ? 'Dispatch' : 'Hand to Customer'} <ArrowRight className="ml-6 w-10 h-10" />
                    </Button>
+                 )}
+                 {isTerminalStatus(selectedOrder.status) && (
+                   <div className="flex-none rounded-[40px] border border-stone-800 bg-stone-900/60 px-10 py-7">
+                     <p className="text-[10px] font-black uppercase tracking-[0.4em] text-stone-500">Archived Order</p>
+                     <p className="mt-2 text-sm font-bold text-stone-300">This order has already moved out of the live queue.</p>
+                   </div>
                  )}
               </div>
             </motion.div>

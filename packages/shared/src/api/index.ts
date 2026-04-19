@@ -14,12 +14,12 @@ const getApiBaseUrl = (): string => {
       return 'https://api.sushimei.uz/api/v1';
     }
 
-    // Development: localhost with port 8080
-    return 'http://localhost:8080/api/v1';
+    // Development: localhost with port 9191
+    return 'http://localhost:9191/api/v1';
   }
 
   // Server-side default
-  return 'http://localhost:8080/api/v1';
+  return 'http://localhost:9191/api/v1';
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -383,6 +383,7 @@ export interface Customer {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  avatar_url: string | null;
   status: 'ACTIVE' | 'BLOCKED';
   bonus_balance: number;
   marketing_opt_in: boolean;
@@ -521,6 +522,7 @@ export interface CustomerProfileUpdate {
   first_name?: string;
   last_name?: string;
   email?: string;
+  avatar_url?: string;
   language_code?: string;
   marketing_opt_in?: boolean;
 }
@@ -537,6 +539,18 @@ export interface CustomerAddressCreate {
   longitude?: number;
   delivery_notes?: string;
   is_default?: boolean;
+}
+
+export interface CustomerBonusActivity {
+  id: string;
+  order_id: string | null;
+  order_number: string | null;
+  txn_type: 'EARN' | 'SPEND' | 'ADJUSTMENT' | 'EXPIRE' | 'REFUND';
+  points: number;
+  balance_after: number;
+  reason: string | null;
+  expires_at: string | null;
+  created_at: string;
 }
 
 export interface OrderDraftItem {
@@ -888,6 +902,9 @@ export const customerApi = {
 
   updateProfile: (data: CustomerProfileUpdate) =>
     api.put<{ updated: boolean }>('/customer/profile', data),
+
+  getBonusHistory: (limit = 10) =>
+    api.get<CustomerBonusActivity[]>('/customer/bonus-history', { limit }),
 
   getOrders: (params?: ListParams) =>
     api.get<Order[]>('/customer/orders', params as Record<string, string | number | boolean | undefined>),

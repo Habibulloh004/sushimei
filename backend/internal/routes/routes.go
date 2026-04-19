@@ -129,6 +129,7 @@ func Register(app *fiber.App, deps Dependencies) {
 	customer := protected.Group("/customer")
 	customer.Get("/profile", middleware.RequirePermission("customer.profile.read"), deps.CustomerHandler.Me)
 	customer.Put("/profile", middleware.RequirePermission("customer.profile.write"), deps.CustomerHandler.UpdateMe)
+	customer.Get("/bonus-history", middleware.RequirePermission("customer.profile.read"), deps.CustomerHandler.BonusActivity)
 	customer.Get("/orders", middleware.RequirePermission("customer.order.read"), deps.OrderHandler.List)
 	customer.Get("/orders/:id", middleware.RequirePermission("customer.order.read"), deps.OrderHandler.CustomerGetByID)
 	customer.Post("/orders/preview", middleware.RequirePermission("customer.order.write"), deps.OrderHandler.Preview)

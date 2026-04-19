@@ -51,6 +51,7 @@ func (r *Repository) List(ctx context.Context, params pagination.ListParams, fil
 			"c.last_name",
 			"c.phone",
 			"c.email",
+			"c.avatar_url",
 			"c.status",
 			"c.language_code",
 			"c.bonus_balance",
@@ -87,6 +88,7 @@ func (r *Repository) List(ctx context.Context, params pagination.ListParams, fil
 			&lastName,
 			&item.Phone,
 			&item.Email,
+			&item.AvatarURL,
 			&item.Status,
 			&item.LanguageCode,
 			&item.BonusBalance,
@@ -133,14 +135,23 @@ func (r *Repository) Create(ctx context.Context, req CreateRequest) (string, err
 			first_name,
 			last_name,
 			email,
+			avatar_url,
 			status,
 			language_code,
 			bonus_balance,
 			marketing_opt_in
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id::text
 	`
+
+	var avatarURL any
+	if req.AvatarURL != nil {
+		trimmed := strings.TrimSpace(*req.AvatarURL)
+		if trimmed != "" {
+			avatarURL = trimmed
+		}
+	}
 
 	var id string
 	if err := r.db.QueryRow(
@@ -150,6 +161,7 @@ func (r *Repository) Create(ctx context.Context, req CreateRequest) (string, err
 		req.FirstName,
 		req.LastName,
 		req.Email,
+		avatarURL,
 		status,
 		languageCode,
 		bonusBalance,
@@ -178,6 +190,14 @@ func (r *Repository) Update(ctx context.Context, id string, req UpdateRequest) e
 	}
 	if req.Email != nil {
 		builder = builder.Set("email", *req.Email)
+	}
+	if req.AvatarURL != nil {
+		trimmed := strings.TrimSpace(*req.AvatarURL)
+		if trimmed == "" {
+			builder = builder.Set("avatar_url", nil)
+		} else {
+			builder = builder.Set("avatar_url", trimmed)
+		}
 	}
 	if req.Status != nil {
 		builder = builder.Set("status", *req.Status)
@@ -227,6 +247,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Profile, error) {
 			c.first_name,
 			c.last_name,
 			c.email,
+			c.avatar_url,
 			c.status,
 			c.bonus_balance,
 			c.marketing_opt_in,
@@ -248,6 +269,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Profile, error) {
 		&profile.FirstName,
 		&profile.LastName,
 		&profile.Email,
+		&profile.AvatarURL,
 		&profile.Status,
 		&profile.BonusBalance,
 		&profile.MarketingOptIn,
@@ -278,6 +300,14 @@ func (r *Repository) UpdateProfile(ctx context.Context, id string, req ProfileUp
 	if req.Email != nil {
 		builder = builder.Set("email", *req.Email)
 	}
+	if req.AvatarURL != nil {
+		trimmed := strings.TrimSpace(*req.AvatarURL)
+		if trimmed == "" {
+			builder = builder.Set("avatar_url", nil)
+		} else {
+			builder = builder.Set("avatar_url", trimmed)
+		}
+	}
 	if req.LanguageCode != nil {
 		builder = builder.Set("language_code", *req.LanguageCode)
 	}
@@ -298,6 +328,57 @@ func (r *Repository) UpdateProfile(ctx context.Context, id string, req ProfileUp
 		return fmt.Errorf("customer not found")
 	}
 	return nil
+}
+
+func (r *Repository) ListBonusActivity(ctx context.Context, customerID string, limit int) ([]BonusActivity, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	const sql = `
+		SELECT
+			bl.id::text,
+			bl.order_id::text,
+			o.order_number,
+			bl.txn_type::text,
+			bl.points,
+			bl.balance_after,
+			bl.reason,
+			bl.expires_at,
+			bl.created_at
+		FROM bonus_ledger bl
+		LEFT JOIN orders o ON o.id = bl.order_id
+		WHERE bl.customer_id = $1
+		ORDER BY bl.created_at DESC
+		LIMIT $2
+	`
+
+	rows, err := r.db.Query(ctx, sql, customerID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	activities := make([]BonusActivity, 0, limit)
+	for rows.Next() {
+		var item BonusActivity
+		if err := rows.Scan(
+			&item.ID,
+			&item.OrderID,
+			&item.OrderNumber,
+			&item.TxnType,
+			&item.Points,
+			&item.BalanceAfter,
+			&item.Reason,
+			&item.ExpiresAt,
+			&item.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		activities = append(activities, item)
+	}
+
+	return activities, rows.Err()
 }
 
 func applyFilters(base sq.SelectBuilder, params pagination.ListParams, filters ListFilters) sq.SelectBuilder {

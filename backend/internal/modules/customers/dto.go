@@ -8,6 +8,7 @@ type ListItem struct {
 	LastName       string     `json:"last_name"`
 	Phone          string     `json:"phone"`
 	Email          *string    `json:"email"`
+	AvatarURL      *string    `json:"avatar_url"`
 	Status         string     `json:"status"`
 	LanguageCode   string     `json:"language_code"`
 	BonusBalance   int        `json:"bonus_balance"`
@@ -30,6 +31,7 @@ type CreateRequest struct {
 	FirstName      *string `json:"first_name"`
 	LastName       *string `json:"last_name"`
 	Email          *string `json:"email"`
+	AvatarURL      *string `json:"avatar_url"`
 	Status         *string `json:"status"`
 	LanguageCode   *string `json:"language_code"`
 	BonusBalance   *int    `json:"bonus_balance"`
@@ -41,6 +43,7 @@ type UpdateRequest struct {
 	FirstName      *string `json:"first_name"`
 	LastName       *string `json:"last_name"`
 	Email          *string `json:"email"`
+	AvatarURL      *string `json:"avatar_url"`
 	Status         *string `json:"status"`
 	LanguageCode   *string `json:"language_code"`
 	BonusBalance   *int    `json:"bonus_balance"`
@@ -52,6 +55,7 @@ type ProfileUpdateRequest struct {
 	FirstName      *string `json:"first_name"`
 	LastName       *string `json:"last_name"`
 	Email          *string `json:"email"`
+	AvatarURL      *string `json:"avatar_url"`
 	LanguageCode   *string `json:"language_code"`
 	MarketingOptIn *bool   `json:"marketing_opt_in"`
 }
@@ -62,6 +66,7 @@ type Profile struct {
 	FirstName      *string    `json:"first_name"`
 	LastName       *string    `json:"last_name"`
 	Email          *string    `json:"email"`
+	AvatarURL      *string    `json:"avatar_url"`
 	Status         string     `json:"status"`
 	BonusBalance   int        `json:"bonus_balance"`
 	MarketingOptIn bool       `json:"marketing_opt_in"`
@@ -70,4 +75,16 @@ type Profile struct {
 	TotalOrders    int64      `json:"total_orders"`
 	LastOrderAt    *time.Time `json:"last_order_at"`
 	CreatedAt      time.Time  `json:"created_at"`
+}
+
+type BonusActivity struct {
+	ID           string     `json:"id"`
+	OrderID      *string    `json:"order_id"`
+	OrderNumber  *string    `json:"order_number"`
+	TxnType      string     `json:"txn_type"`
+	Points       int        `json:"points"`
+	BalanceAfter int        `json:"balance_after"`
+	Reason       *string    `json:"reason"`
+	ExpiresAt    *time.Time `json:"expires_at"`
+	CreatedAt    time.Time  `json:"created_at"`
 }

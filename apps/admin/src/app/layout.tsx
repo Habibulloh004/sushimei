@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import "../index.css";
 import "./admin-forms.css";
 import { Providers } from "./providers";
@@ -17,7 +16,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Script src="https://mcp.figma.com/mcp/html-to-design/capture.js" strategy="afterInteractive" />
         <Providers>{children}</Providers>
       </body>
     </html>

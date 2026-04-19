@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import "../index.css";
 import "leaflet/dist/leaflet.css";
 import "./brand-theme.css";
 import { Providers } from "./providers";
+import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
-  title: "Sushi Mei - Order Online",
+  title: {
+    default: "Sushi Mei - Fresh Sushi Delivery & Pickup",
+    template: "%s | Sushi Mei",
+  },
   description: "Order fresh sushi online from Sushi Mei. Fast delivery and pickup available.",
 };
 
@@ -17,9 +20,19 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
-        <Providers>{children}</Providers>
-        <Script src="https://mcp.figma.com/mcp/html-to-design/capture.js" strategy="afterInteractive" />
+      <body className="min-h-screen bg-stone-50 dark:bg-stone-950 text-stone-900 dark:text-stone-100 font-sans antialiased">
+        <Providers>
+          {children}
+        </Providers>
+        <Toaster
+          position="bottom-center"
+          toastOptions={{
+            classNames: {
+              toast: 'bg-stone-950 dark:bg-white text-white dark:text-stone-950 rounded-2xl shadow-2xl border-0',
+              title: 'text-sm font-bold tracking-tight',
+            },
+          }}
+        />
       </body>
     </html>
   );

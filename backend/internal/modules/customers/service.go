@@ -118,3 +118,17 @@ func (s *Service) GetByID(ctx context.Context, id string) (*Profile, error) {
 	}
 	return s.repo.GetByID(ctx, id)
 }
+
+func (s *Service) ListBonusActivity(ctx context.Context, id string, limit int) ([]BonusActivity, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, errors.New("customer id is required")
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	return s.repo.ListBonusActivity(ctx, id, limit)
+}

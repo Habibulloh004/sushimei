@@ -1,6 +1,7 @@
 package customers
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -41,7 +42,7 @@ func (h *Handler) List(c *fiber.Ctx) error {
 
 func (h *Handler) Create(c *fiber.Ctx) error {
 	var req CreateRequest
-	if err := c.BodyParser(&req); err != nil {
+	if err := json.Unmarshal(c.Body(), &req); err != nil {
 		return response.Fail(c, fiber.StatusBadRequest, "invalid request body", err.Error())
 	}
 
@@ -60,7 +61,7 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 	}
 
 	var req UpdateRequest
-	if err := c.BodyParser(&req); err != nil {
+	if err := json.Unmarshal(c.Body(), &req); err != nil {
 		return response.Fail(c, fiber.StatusBadRequest, "invalid request body", err.Error())
 	}
 
@@ -99,7 +100,7 @@ func (h *Handler) UpdateMe(c *fiber.Ctx) error {
 	}
 
 	var req ProfileUpdateRequest
-	if err := c.BodyParser(&req); err != nil {
+	if err := json.Unmarshal(c.Body(), &req); err != nil {
 		return response.Fail(c, fiber.StatusBadRequest, "invalid request body", err.Error())
 	}
 
@@ -130,6 +131,21 @@ func (h *Handler) Me(c *fiber.Ctx) error {
 	}
 
 	return response.OK(c, fiber.StatusOK, profile, nil)
+}
+
+func (h *Handler) BonusActivity(c *fiber.Ctx) error {
+	userID, _ := c.Locals(middleware.ContextUserID).(string)
+	if strings.TrimSpace(userID) == "" {
+		return response.Fail(c, fiber.StatusUnauthorized, "missing authenticated customer", nil)
+	}
+
+	limit := parsePositiveInt(c.Query("limit"))
+	activities, err := h.service.ListBonusActivity(c.Context(), userID, limit)
+	if err != nil {
+		return response.Fail(c, fiber.StatusInternalServerError, "failed to fetch bonus activity", err.Error())
+	}
+
+	return response.OK(c, fiber.StatusOK, activities, nil)
 }
 
 func parsePositiveInt(raw string) int {

@@ -23,7 +23,7 @@ type Config struct {
 }
 
 func Load() Config {
-	_ = godotenv.Load()
+	_ = godotenv.Load(".env", "backend/.env", "../.env", "../backend/.env")
 
 	return Config{
 		AppName:          getenv("APP_NAME", "sushimei-backend"),

@@ -81,6 +81,12 @@ const getInitialAdminView = (): string => {
 
   return DEFAULT_ADMIN_VIEW;
 };
+
+const getInitialDesktopState = (): boolean => {
+  if (typeof window === 'undefined') return true;
+  return window.matchMedia('(min-width: 1024px)').matches;
+};
+
 const ORDER_STATUS_DISPLAY_MAP: Record<string, { label: string; variant: 'success' | 'warning' | 'error' | 'info' | 'neutral' }> = {
   RECEIVED: { label: 'Received', variant: 'info' },
   CONFIRMED: { label: 'Confirmed', variant: 'info' },
@@ -518,6 +524,9 @@ const EditorSidebar = ({
 
     return () => {
       timeline.kill();
+      if (!open) {
+        setIsRendered(false);
+      }
     };
   }, [isRendered, open]);
 
@@ -582,8 +591,8 @@ const SystemClock = memo(function SystemClock() {
 export const AdminInterface = () => {
   const { user, logout } = useAuth();
   const [activeView, setActiveView] = useState(getInitialAdminView);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isDesktop, setIsDesktop] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(getInitialDesktopState);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(getInitialDesktopState);
   const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
   const detailBackdropRef = useRef<HTMLDivElement | null>(null);
   const detailPanelRef = useRef<HTMLDivElement | null>(null);
