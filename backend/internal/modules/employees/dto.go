@@ -15,8 +15,13 @@ type ListItem struct {
 	LastName    *string    `json:"last_name"`
 	Status      string     `json:"status"`
 	IsActive    bool       `json:"is_active"`
+	OnDuty      bool       `json:"on_duty"`
 	LastLoginAt *time.Time `json:"last_login_at"`
 	CreatedAt   time.Time  `json:"created_at"`
+}
+
+type SetOnDutyRequest struct {
+	OnDuty bool `json:"on_duty"`
 }
 
 type DetailItem struct {

@@ -23,6 +23,7 @@ import (
 	"sushimei/backend/internal/modules/promos"
 	"sushimei/backend/internal/modules/spots"
 	"sushimei/backend/internal/platform/otp"
+	"sushimei/backend/internal/platform/realtime"
 	"sushimei/backend/internal/platform/security"
 	"sushimei/backend/internal/routes"
 )
@@ -52,6 +53,10 @@ func main() {
 	tokenManager := security.NewTokenManager(cfg.JWTAccessSecret, cfg.JWTRefreshSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL)
 	otpStore := otp.NewMemoryStore()
 
+	// Realtime hub — one shared in-memory instance fans order events to
+	// subscribed staff clients over WebSocket.
+	hub := realtime.NewHub()
+
 	// Auth module
 	authRepo := auth.NewRepository(dbPool)
 	authService := auth.NewService(authRepo, tokenManager, otpStore, cfg.AppEnv)
@@ -59,7 +64,7 @@ func main() {
 
 	// Orders module
 	orderRepo := orders.NewRepository(dbPool)
-	orderService := orders.NewService(orderRepo)
+	orderService := orders.NewService(orderRepo).WithHub(hub)
 	orderHandler := orders.NewHandler(orderService)
 
 	// Customers module
@@ -119,6 +124,7 @@ func main() {
 		PromoHandler:     promoHandler,
 		BonusRuleHandler: bonusRuleHandler,
 		AddressHandler:   addressHandler,
+		Hub:              hub,
 	})
 
 	go func() {

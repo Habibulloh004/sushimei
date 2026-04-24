@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs ls *)",
+      "Bash(go build *)",
+      "Read(//private/tmp/**)",
+      "Bash(docker exec *)",
+      "Bash(curl -s -H 'Authorization: Bearer __TRACKED_VAR__' 'http://localhost:9191/api/v1/spot/orders?limit=5')"
+    ]
+  }
+}

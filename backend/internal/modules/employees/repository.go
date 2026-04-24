@@ -258,3 +258,95 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+func (r *Repository) ListCouriers(ctx context.Context, spotID string, onlyOnDuty bool) ([]ListItem, error) {
+	base := sq.Select(
+		"e.id::text",
+		"e.role_code",
+		"COALESCE(r.title, e.role_code)",
+		"e.spot_id::text",
+		"s.name",
+		"e.email",
+		"e.phone",
+		"e.avatar_url",
+		"e.first_name",
+		"e.last_name",
+		"e.status",
+		"e.is_active",
+		"e.on_duty",
+		"e.last_login_at",
+		"e.created_at",
+	).
+		PlaceholderFormat(sq.Dollar).
+		From("employees e").
+		LeftJoin("roles r ON r.code = e.role_code").
+		LeftJoin("spots s ON s.id = e.spot_id").
+		Where(sq.Eq{"e.role_code": "COURIER", "e.deleted_at": nil, "e.is_active": true}).
+		OrderBy("e.on_duty DESC, e.first_name ASC NULLS LAST, e.last_name ASC NULLS LAST")
+
+	if spotID != "" {
+		base = base.Where(sq.Or{sq.Eq{"e.spot_id": spotID}, sq.Eq{"e.spot_id": nil}})
+	}
+	if onlyOnDuty {
+		base = base.Where(sq.Eq{"e.on_duty": true})
+	}
+
+	sqlStr, args, err := base.ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.db.Query(ctx, sqlStr, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]ListItem, 0)
+	for rows.Next() {
+		var item ListItem
+		if err := rows.Scan(
+			&item.ID,
+			&item.RoleCode,
+			&item.RoleTitle,
+			&item.SpotID,
+			&item.SpotName,
+			&item.Email,
+			&item.Phone,
+			&item.AvatarURL,
+			&item.FirstName,
+			&item.LastName,
+			&item.Status,
+			&item.IsActive,
+			&item.OnDuty,
+			&item.LastLoginAt,
+			&item.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) SetOnDuty(ctx context.Context, employeeID string, onDuty bool) error {
+	const q = `
+		UPDATE employees
+		SET on_duty = $2, on_duty_changed_at = NOW(), updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+	tag, err := r.db.Exec(ctx, q, employeeID, onDuty)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("employee not found")
+	}
+	return nil
+}
+
+func (r *Repository) GetOnDuty(ctx context.Context, employeeID string) (bool, error) {
+	var onDuty bool
+	err := r.db.QueryRow(ctx, `SELECT on_duty FROM employees WHERE id = $1 AND deleted_at IS NULL`, employeeID).Scan(&onDuty)
+	return onDuty, err
+}

@@ -10,15 +10,15 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-red-600 text-white hover:bg-red-700 shadow-[0_12px_30px_rgba(220,38,38,0.25)] active:scale-95 active:shadow-none",
+          "bg-[#5775FF] text-white hover:bg-[#3f5de0] shadow-[0_12px_30px_rgba(87,117,255,0.25)] active:scale-95 active:shadow-none",
         primary:
-          "bg-red-600 text-white hover:bg-red-700 shadow-[0_12px_30px_rgba(220,38,38,0.25)] active:scale-95 active:shadow-none",
+          "bg-[#5775FF] text-white hover:bg-[#3f5de0] shadow-[0_12px_30px_rgba(87,117,255,0.25)] active:scale-95 active:shadow-none",
         secondary:
-          "bg-stone-950 text-white dark:bg-stone-100 dark:text-stone-950 hover:opacity-90 active:scale-95 shadow-lg shadow-black/10",
+          "bg-[#5775FF] text-white hover:bg-[#3f5de0] active:scale-95 shadow-lg shadow-[#5775FF]/20",
         outline:
-          "border border-stone-200 dark:border-stone-800 text-stone-900 dark:text-white hover:bg-stone-50 dark:hover:bg-stone-900 active:scale-95",
+          "bg-white border border-stone-200 text-stone-700 hover:bg-[#5775FF]/5 hover:border-[#5775FF]/40 hover:text-[#5775FF] active:scale-95",
         ghost:
-          "text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-900 active:scale-95",
+          "text-stone-600 hover:bg-stone-100 active:scale-95",
         destructive:
           "bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-400 border border-red-100 dark:border-red-900/30",
         link: "text-red-600 underline-offset-4 hover:underline"

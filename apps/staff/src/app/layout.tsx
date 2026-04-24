@@ -4,8 +4,16 @@ import "./brand-theme.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Sushimei Kitchen - Staff Interface",
-  description: "Kitchen management system for Sushimei staff",
+  title: "Sushimei Staff Portal",
+  description: "Sotuvchi, oshpaz va kuryer uchun ish stantsiyasi",
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: "#0c0a09",
 };
 
 export default function RootLayout({

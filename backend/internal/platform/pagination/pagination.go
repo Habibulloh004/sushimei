@@ -10,17 +10,18 @@ import (
 )
 
 type ListParams struct {
-	Page        int
-	Limit       int
-	Search      string
-	Status      string
-	SpotID      string
-	PaymentType string
-	OrderType   string
-	SortBy      string
-	SortOrder   string
-	DateFrom    *time.Time
-	DateTo      *time.Time
+	Page              int
+	Limit             int
+	Search            string
+	Status            string
+	SpotID            string
+	PaymentType       string
+	OrderType         string
+	AssignedCourierID string
+	SortBy            string
+	SortOrder         string
+	DateFrom          *time.Time
+	DateTo            *time.Time
 }
 
 type Meta struct {
@@ -65,17 +66,18 @@ func ParseListParams(c *fiber.Ctx, allowedSort map[string]string, defaultSort st
 	}
 
 	return ListParams{
-		Page:        page,
-		Limit:       limit,
-		Search:      strings.TrimSpace(c.Query("search")),
-		Status:      strings.TrimSpace(c.Query("status")),
-		SpotID:      strings.TrimSpace(c.Query("spot_id")),
-		PaymentType: strings.TrimSpace(c.Query("payment_type")),
-		OrderType:   strings.TrimSpace(c.Query("order_type")),
-		SortBy:      sortBy,
-		SortOrder:   sortOrder,
-		DateFrom:    dateFrom,
-		DateTo:      dateTo,
+		Page:              page,
+		Limit:             limit,
+		Search:            strings.TrimSpace(c.Query("search")),
+		Status:            strings.TrimSpace(c.Query("status")),
+		SpotID:            strings.TrimSpace(c.Query("spot_id")),
+		PaymentType:       strings.TrimSpace(c.Query("payment_type")),
+		OrderType:         strings.TrimSpace(c.Query("order_type")),
+		AssignedCourierID: strings.TrimSpace(c.Query("assigned_courier_id")),
+		SortBy:            sortBy,
+		SortOrder:         sortOrder,
+		DateFrom:          dateFrom,
+		DateTo:            dateTo,
 	}, nil
 }
 

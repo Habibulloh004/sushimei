@@ -36,8 +36,20 @@ import {
   type Category,
   type Product,
   type DashboardOverview,
+  type DailySalesPoint,
   type ListParams,
 } from '@/lib/api';
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 type PaginationMeta = NonNullable<ApiResponse<unknown>['meta']>;
 
@@ -591,6 +603,7 @@ const SystemClock = memo(function SystemClock() {
 export const AdminInterface = () => {
   const { user, logout } = useAuth();
   const [activeView, setActiveView] = useState(getInitialAdminView);
+  const [salesRangeDays, setSalesRangeDays] = useState<7 | 14 | 30>(30);
   const [isDesktop, setIsDesktop] = useState(getInitialDesktopState);
   const [isSidebarOpen, setIsSidebarOpen] = useState(getInitialDesktopState);
   const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
@@ -762,6 +775,13 @@ export const AdminInterface = () => {
     enabled: shouldFetchDashboard,
   });
 
+  const dailySalesQuery = useQuery({
+    queryKey: ['admin', authScope, 'daily-sales', salesRangeDays],
+    queryFn: async () => ensureSuccess(await adminApi.getDailySales(salesRangeDays), 'Failed to load daily sales'),
+    placeholderData: keepPreviousData,
+    enabled: isDashboardView,
+  });
+
   const ordersLedgerQuery = useQuery({
     queryKey: ['admin', authScope, 'orders-ledger', ordersQueryParams],
     queryFn: async () => ensureSuccess(await adminApi.getOrders(ordersQueryParams), 'Failed to load orders'),
@@ -821,6 +841,7 @@ export const AdminInterface = () => {
   const customers: Customer[] = customersQuery.data?.data || [];
   const dashboardOverview: DashboardOverview | null = dashboardOverviewQuery.data?.data || null;
   const dashboardOrders: Order[] = dashboardOverview?.recent_orders || [];
+  const dailySales: DailySalesPoint[] = dailySalesQuery.data?.data || [];
   const orders: Order[] = ordersLedgerQuery.data?.data || [];
   const employees: Employee[] = employeesQuery.data?.data || [];
   const promos: PromoCode[] = promosQuery.data?.data || [];
@@ -1885,7 +1906,17 @@ export const AdminInterface = () => {
   };
 
   const formatPrice = (amount: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+    const safe = Number.isFinite(amount) ? amount : 0;
+    return `${new Intl.NumberFormat('uz-UZ', { maximumFractionDigits: 0 }).format(Math.round(safe))} soʻm`;
+  };
+
+  const formatCompactSom = (amount: number) => {
+    const safe = Number.isFinite(amount) ? amount : 0;
+    const abs = Math.abs(safe);
+    if (abs >= 1_000_000_000) return `${(safe / 1_000_000_000).toFixed(1)} mlrd`;
+    if (abs >= 1_000_000) return `${(safe / 1_000_000).toFixed(1)} mln`;
+    if (abs >= 1_000) return `${Math.round(safe / 1_000)}K`;
+    return `${Math.round(safe)}`;
   };
 
   const formatPoints = (value: number) => {
@@ -1989,6 +2020,30 @@ export const AdminInterface = () => {
   const totalPointsRemaining = loyaltyStats?.total_points_remaining ?? Math.max(totalPointsIssued - totalPointsUsed, 0);
   const loyaltyUsagePercent = totalPointsIssued > 0 ? Math.min((totalPointsUsed / totalPointsIssued) * 100, 100) : 0;
 
+  const salesChartData = useMemo(
+    () =>
+      dailySales.map((point) => {
+        const date = new Date(point.date);
+        const label = Number.isNaN(date.getTime())
+          ? point.date
+          : date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+        return {
+          date: point.date,
+          label,
+          revenue: Number(point.revenue) || 0,
+          orders: Number(point.order_count) || 0,
+        };
+      }),
+    [dailySales],
+  );
+
+  const salesTotals = useMemo(() => {
+    const revenue = salesChartData.reduce((sum, p) => sum + p.revenue, 0);
+    const orders = salesChartData.reduce((sum, p) => sum + p.orders, 0);
+    const avg = salesChartData.length > 0 ? revenue / salesChartData.length : 0;
+    return { revenue, orders, avg };
+  }, [salesChartData]);
+
   const efficiencyItems = useMemo(
     () => [
       {
@@ -2015,37 +2070,198 @@ export const AdminInterface = () => {
 
   const renderDashboard = () => (
     <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-black tracking-tighter">Command Center</h2>
-          <p className="text-stone-500 font-medium">Real-time overview of your sushi empire</p>
+          <h2 className="text-2xl font-black tracking-tighter">Command Center</h2>
+          <p className="text-xs text-stone-500 font-medium">Real-time overview of your sushi empire</p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" size="sm" className="h-11 rounded-2xl px-5 text-[10px] font-black uppercase tracking-widest gap-2">
+          <Button variant="outline" size="sm" className="h-9 rounded-2xl px-4 text-[10px] font-black uppercase tracking-widest gap-2">
             <Download className="w-3.5 h-3.5" /> Export Report
           </Button>
-          <Button size="sm" className="h-11 rounded-2xl px-6 text-[10px] font-black uppercase tracking-widest gap-2" onClick={() => setActiveView('promo')}>
-            <Plus className="w-4 h-4" /> New Promotion
+          <Button size="sm" className="h-9 rounded-2xl px-5 text-[10px] font-black uppercase tracking-widest gap-2" onClick={() => setActiveView('promo')}>
+            <Plus className="w-3.5 h-3.5" /> New Promotion
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         {stats.map((stat) => (
-          <div key={stat.label} className="bg-white dark:bg-stone-900 p-8 rounded-[2.5rem] border border-stone-200/50 dark:border-stone-800/50 shadow-sm relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-8 opacity-[0.03] dark:opacity-[0.07] transform group-hover:scale-110 transition-transform">
-               <TrendingUp className="w-16 h-16" />
+          <div key={stat.label} className="bg-white dark:bg-stone-900 p-5 rounded-[1.5rem] border border-stone-200/50 dark:border-stone-800/50 shadow-sm relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-5 opacity-[0.03] dark:opacity-[0.07] transform group-hover:scale-110 transition-transform">
+               <TrendingUp className="w-10 h-10" />
             </div>
-            <p className="text-stone-400 text-xs font-black uppercase tracking-[0.2em]">{stat.label}</p>
-            <div className="mt-4 space-y-3">
-              <h4 className="text-3xl font-black tracking-tight leading-none">{stat.value}</h4>
-              <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-black whitespace-nowrap ${stat.isUp ? 'text-emerald-500 bg-emerald-500/10' : 'text-red-500 bg-red-500/10'}`}>
+            <p className="text-stone-400 text-[10px] font-black uppercase tracking-[0.2em]">{stat.label}</p>
+            <div className="mt-3 space-y-2">
+              <h4 className="text-xl font-black tracking-tight leading-none truncate">{stat.value}</h4>
+              <div className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-black whitespace-nowrap ${stat.isUp ? 'text-emerald-500 bg-emerald-500/10' : 'text-red-500 bg-red-500/10'}`}>
                 {stat.isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                 {stat.trend}
               </div>
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+        <div className="xl:col-span-2 bg-white dark:bg-stone-900 rounded-[1.5rem] border border-stone-200/50 dark:border-stone-800/50 shadow-sm overflow-hidden">
+          <div className="p-5 border-b border-stone-100 dark:border-stone-800/50 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.3em] text-stone-400">Kunlik savdo</p>
+              <h3 className="text-sm font-black tracking-tight mt-1">Savdo dinamikasi</h3>
+              <p className="text-[11px] text-stone-500 font-medium mt-0.5">
+                Oxirgi {salesRangeDays} kunlik daromad
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <div className="inline-flex items-center gap-1 rounded-xl bg-stone-100 dark:bg-stone-800 p-0.5">
+                {[7, 14, 30].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setSalesRangeDays(d as 7 | 14 | 30)}
+                    className={cn(
+                      'px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-colors',
+                      salesRangeDays === d
+                        ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 shadow-sm'
+                        : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200',
+                    )}
+                  >
+                    {d} kun
+                  </button>
+                ))}
+              </div>
+              <div className="text-right">
+                <p className="text-[9px] font-black uppercase tracking-widest text-stone-400">Jami daromad</p>
+                <p className="text-base font-black tracking-tight">{formatPrice(salesTotals.revenue)}</p>
+                <p className="text-[10px] font-bold text-stone-500 mt-0.5">
+                  {salesTotals.orders} ta zakaz · oʻrtacha {formatPrice(salesTotals.avg)}/kun
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="p-4 md:p-6">
+            <div className="h-64 w-full">
+              {dailySalesQuery.isLoading && salesChartData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-stone-400 text-xs font-bold uppercase tracking-widest">
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" /> Yuklanmoqda...
+                </div>
+              ) : salesChartData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-stone-400 text-xs font-bold uppercase tracking-widest">
+                  Ma'lumot yo'q
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={salesChartData} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#dc2626" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#dc2626" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-stone-200 dark:text-stone-800" />
+                    <XAxis
+                      dataKey="label"
+                      stroke="currentColor"
+                      className="text-stone-400"
+                      tick={{ fontSize: 11, fontWeight: 600 }}
+                      tickLine={false}
+                      axisLine={false}
+                      interval="preserveStartEnd"
+                      minTickGap={20}
+                    />
+                    <YAxis
+                      stroke="currentColor"
+                      className="text-stone-400"
+                      tick={{ fontSize: 11, fontWeight: 600 }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={72}
+                      tickFormatter={(value: number) => formatCompactSom(value)}
+                    />
+                    <Tooltip
+                      cursor={{ stroke: '#dc2626', strokeWidth: 1, strokeDasharray: '4 4' }}
+                      contentStyle={{
+                        borderRadius: 16,
+                        border: '1px solid rgba(0,0,0,0.08)',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        padding: '10px 14px',
+                      }}
+                      formatter={((value: unknown) => [formatPrice(Number(value) || 0), 'Daromad']) as never}
+                      labelFormatter={(label) => String(label)}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="revenue"
+                      stroke="#dc2626"
+                      strokeWidth={2.5}
+                      fill="url(#revenueFill)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-stone-900 rounded-[1.5rem] border border-stone-200/50 dark:border-stone-800/50 shadow-sm overflow-hidden">
+          <div className="p-5 border-b border-stone-100 dark:border-stone-800/50">
+            <p className="text-[9px] font-black uppercase tracking-[0.3em] text-stone-400">Zakazlar soni</p>
+            <h3 className="text-sm font-black tracking-tight mt-1">Kunlik zakazlar</h3>
+            <p className="text-2xl font-black tracking-tighter mt-2 tabular-nums">{salesTotals.orders}</p>
+            <p className="text-[11px] text-stone-500 font-medium">
+              Oxirgi {salesRangeDays} kun · {salesChartData.length > 0 ? Math.round(salesTotals.orders / salesChartData.length) : 0} ta/kun oʻrtacha
+            </p>
+          </div>
+          <div className="p-4 md:p-6">
+            <div className="h-64 w-full">
+              {salesChartData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-stone-400 text-xs font-bold uppercase tracking-widest">
+                  Ma'lumot yo'q
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={salesChartData} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-stone-200 dark:text-stone-800" />
+                    <XAxis
+                      dataKey="label"
+                      stroke="currentColor"
+                      className="text-stone-400"
+                      tick={{ fontSize: 11, fontWeight: 600 }}
+                      tickLine={false}
+                      axisLine={false}
+                      interval="preserveStartEnd"
+                      minTickGap={20}
+                    />
+                    <YAxis
+                      stroke="currentColor"
+                      className="text-stone-400"
+                      tick={{ fontSize: 11, fontWeight: 600 }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={36}
+                      allowDecimals={false}
+                    />
+                    <Tooltip
+                      cursor={{ fill: 'rgba(220, 38, 38, 0.08)' }}
+                      contentStyle={{
+                        borderRadius: 16,
+                        border: '1px solid rgba(0,0,0,0.08)',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        padding: '10px 14px',
+                      }}
+                      formatter={((value: unknown) => [Number(value) || 0, 'Zakaz']) as never}
+                      labelFormatter={(label) => String(label)}
+                    />
+                    <Bar dataKey="orders" fill="#0f172a" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">

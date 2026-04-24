@@ -14,6 +14,7 @@ import (
 	"sushimei/backend/internal/modules/products"
 	"sushimei/backend/internal/modules/promos"
 	"sushimei/backend/internal/modules/spots"
+	"sushimei/backend/internal/platform/realtime"
 	"sushimei/backend/internal/platform/security"
 )
 
@@ -30,6 +31,7 @@ type Dependencies struct {
 	PromoHandler     *promos.Handler
 	BonusRuleHandler *bonusrules.Handler
 	AddressHandler   *addresses.Handler
+	Hub              *realtime.Hub
 }
 
 func Register(app *fiber.App, deps Dependencies) {
@@ -42,6 +44,13 @@ func Register(app *fiber.App, deps Dependencies) {
 	v1 := api.Group("/v1")
 
 	v1.Get("/health", deps.HealthHandler.Check)
+
+	// Realtime WebSocket endpoint. Auth via `token` query param (JWT access
+	// token). The upgrade guard middleware must run before websocket.New.
+	if deps.Hub != nil {
+		v1.Use("/ws", realtime.UpgradeGuard())
+		v1.Get("/ws", realtime.Handler(deps.Hub, deps.TokenManager))
+	}
 
 	// Auth routes (public)
 	authGroup := v1.Group("/auth")
@@ -80,6 +89,7 @@ func Register(app *fiber.App, deps Dependencies) {
 	admin.Get("/stats/dashboard", middleware.RequirePermission("orders.read"), deps.OrderHandler.GetDashboardStats)
 	admin.Get("/stats/efficiency", middleware.RequirePermission("orders.read"), deps.OrderHandler.GetEfficiencyMetrics)
 	admin.Get("/stats/loyalty", middleware.RequirePermission("orders.read"), deps.OrderHandler.GetLoyaltyStats)
+	admin.Get("/stats/daily-sales", middleware.RequirePermission("orders.read"), deps.OrderHandler.GetDailySales)
 
 	// Categories management (admin)
 	admin.Post("/categories", middleware.RequirePermission("menu.write"), deps.CategoryHandler.Create)
@@ -118,12 +128,30 @@ func Register(app *fiber.App, deps Dependencies) {
 	admin.Put("/bonus-rules/:id", middleware.RequirePermission("customers.bonus.write"), deps.BonusRuleHandler.Update)
 	admin.Delete("/bonus-rules/:id", middleware.RequirePermission("customers.bonus.write"), deps.BonusRuleHandler.Delete)
 
-	// Spot operator routes
+	// Spot operator routes (shared by CASHIER, KITCHEN, COURIER, SPOT_OPERATOR)
 	spot := protected.Group("/spot")
 	spot.Get("/orders", middleware.RequirePermission("orders.read"), deps.OrderHandler.List)
 	spot.Get("/orders/:id", middleware.RequirePermission("orders.read"), deps.OrderHandler.GetByID)
 	spot.Post("/orders", middleware.RequirePermission("orders.write"), deps.OrderHandler.CreateSpotOrder)
 	spot.Patch("/orders/:id/status", middleware.RequirePermission("orders.write"), deps.OrderHandler.UpdateStatus)
+	spot.Patch("/orders/:id/items", middleware.RequirePermission("orders.write"), deps.OrderHandler.UpdateItems)
+	spot.Post("/orders/:id/assign-courier", middleware.RequirePermission("orders.write"), deps.OrderHandler.AssignCourier)
+	spot.Get("/couriers", middleware.RequirePermission("orders.read"), deps.EmployeeHandler.ListCouriers)
+
+	// Current employee profile — used by courier/cashier profile pages.
+	spot.Get("/employees/me", middleware.RequirePermission("orders.read"), deps.EmployeeHandler.GetMe)
+
+	// Courier self-service — each courier toggles their own on-duty shift flag.
+	spot.Get("/couriers/me/on-duty", middleware.RequirePermission("orders.read"), deps.EmployeeHandler.GetMyOnDutyStatus)
+	spot.Patch("/couriers/me/on-duty", middleware.RequirePermission("orders.write"), deps.EmployeeHandler.SetMyOnDutyStatus)
+
+	// Courier offer pool — on-duty couriers at the spot race to claim
+	// delivery orders. The accept endpoint does an atomic DB claim, so only
+	// one courier wins even under concurrent requests.
+	spot.Get("/courier/offers", middleware.RequirePermission("orders.read"), deps.OrderHandler.ListCourierOffers)
+	spot.Post("/courier/offers/:id/accept", middleware.RequirePermission("orders.write"), deps.OrderHandler.AcceptCourierOffer)
+	spot.Post("/courier/offers/:id/decline", middleware.RequirePermission("orders.write"), deps.OrderHandler.DeclineCourierOffer)
+	spot.Get("/courier/settings/target-minutes", middleware.RequirePermission("orders.read"), deps.OrderHandler.GetCourierTargetMinutes)
 
 	// Customer routes
 	customer := protected.Group("/customer")

@@ -1,6 +1,7 @@
 package orders
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 
@@ -39,6 +40,11 @@ func (h *Handler) List(c *fiber.Ctx) error {
 		params.SpotID = spotIDFromToken
 	}
 
+	// Courier sees only orders assigned to them
+	if role == rbac.RoleCourier {
+		params.AssignedCourierID = userID
+	}
+
 	customerID := ""
 	if role == rbac.RoleCustomer {
 		customerID = userID
@@ -70,11 +76,19 @@ func (h *Handler) GetByID(c *fiber.Ctx) error {
 
 	// Enforce spot-bound access: staff with a spot_id can only view their own spot's orders
 	role, _ := c.Locals(middleware.ContextRole).(string)
+	userID, _ := c.Locals(middleware.ContextUserID).(string)
 	spotIDFromToken, _ := c.Locals(middleware.ContextSpotID).(string)
 	isSpotBoundRole := role == rbac.RoleSpotOp || role == rbac.RoleKitchen ||
 		role == rbac.RoleCashier || role == rbac.RoleCourier
 	if isSpotBoundRole && strings.TrimSpace(spotIDFromToken) != "" && detail.SpotID != spotIDFromToken {
 		return response.Fail(c, fiber.StatusForbidden, "cannot access other spot orders", nil)
+	}
+
+	// Couriers may only view orders assigned to them
+	if role == rbac.RoleCourier {
+		if detail.AssignedCourierID == nil || *detail.AssignedCourierID != userID {
+			return response.Fail(c, fiber.StatusForbidden, "order is not assigned to you", nil)
+		}
 	}
 
 	return response.OK(c, fiber.StatusOK, detail, nil)
@@ -125,6 +139,17 @@ func (h *Handler) UpdateStatus(c *fiber.Ctx) error {
 
 	actorID, _ := c.Locals(middleware.ContextUserID).(string)
 	actorRole, _ := c.Locals(middleware.ContextRole).(string)
+
+	if actorRole == rbac.RoleCourier {
+		assignedID, err := h.service.GetAssignedCourierID(c.Context(), orderID)
+		if err != nil {
+			return response.Fail(c, fiber.StatusBadRequest, "failed to verify courier assignment", err.Error())
+		}
+		if assignedID != actorID {
+			return response.Fail(c, fiber.StatusForbidden, "order is not assigned to you", nil)
+		}
+	}
+
 	if err := h.service.UpdateStatus(c.Context(), orderID, req.Status, req.Reason, actorID, actorRole); err != nil {
 		statusCode := fiber.StatusBadRequest
 		if strings.Contains(strings.ToLower(err.Error()), "not found") {
@@ -134,6 +159,139 @@ func (h *Handler) UpdateStatus(c *fiber.Ctx) error {
 	}
 
 	return response.OK(c, fiber.StatusOK, fiber.Map{"updated": true, "order_id": orderID, "status": req.Status}, fiber.Map{"code": strconv.Itoa(fiber.StatusOK)})
+}
+
+func (h *Handler) UpdateItems(c *fiber.Ctx) error {
+	orderID := c.Params("id")
+	if orderID == "" {
+		return response.Fail(c, fiber.StatusBadRequest, "missing order id", nil)
+	}
+
+	var req UpdateItemsRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.Fail(c, fiber.StatusBadRequest, "invalid request body", err.Error())
+	}
+
+	if err := h.service.UpdateItems(c.Context(), orderID, req); err != nil {
+		statusCode := fiber.StatusBadRequest
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+			statusCode = fiber.StatusNotFound
+		}
+		return response.Fail(c, statusCode, "failed to update order items", err.Error())
+	}
+
+	return response.OK(c, fiber.StatusOK, fiber.Map{"updated": true, "order_id": orderID}, nil)
+}
+
+func (h *Handler) AssignCourier(c *fiber.Ctx) error {
+	orderID := c.Params("id")
+	if orderID == "" {
+		return response.Fail(c, fiber.StatusBadRequest, "missing order id", nil)
+	}
+
+	var req AssignCourierRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.Fail(c, fiber.StatusBadRequest, "invalid request body", err.Error())
+	}
+
+	actorID, _ := c.Locals(middleware.ContextUserID).(string)
+	if err := h.service.AssignCourier(c.Context(), orderID, strings.TrimSpace(req.CourierID), actorID); err != nil {
+		statusCode := fiber.StatusBadRequest
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+			statusCode = fiber.StatusNotFound
+		}
+		return response.Fail(c, statusCode, "failed to assign courier", err.Error())
+	}
+
+	return response.OK(c, fiber.StatusOK, fiber.Map{"assigned": true, "order_id": orderID, "courier_id": req.CourierID}, nil)
+}
+
+// ListCourierOffers returns delivery orders at the courier's spot that are
+// READY but not yet claimed. Only COURIER role; empty list if off-duty.
+func (h *Handler) ListCourierOffers(c *fiber.Ctx) error {
+	role, _ := c.Locals(middleware.ContextRole).(string)
+	if role != rbac.RoleCourier {
+		return response.Fail(c, fiber.StatusForbidden, "only couriers can view offers", nil)
+	}
+
+	userID, _ := c.Locals(middleware.ContextUserID).(string)
+	spotID, _ := c.Locals(middleware.ContextSpotID).(string)
+	if strings.TrimSpace(spotID) == "" {
+		return response.Fail(c, fiber.StatusForbidden, "courier is not bound to a spot", nil)
+	}
+
+	offers, err := h.service.ListCourierOffers(c.Context(), spotID, userID)
+	if err != nil {
+		return response.Fail(c, fiber.StatusInternalServerError, "failed to fetch offers", err.Error())
+	}
+	return response.OK(c, fiber.StatusOK, offers, nil)
+}
+
+// AcceptCourierOffer atomically claims the offer for the calling courier.
+// Returns 409 if another courier won the race.
+func (h *Handler) AcceptCourierOffer(c *fiber.Ctx) error {
+	role, _ := c.Locals(middleware.ContextRole).(string)
+	if role != rbac.RoleCourier {
+		return response.Fail(c, fiber.StatusForbidden, "only couriers can accept offers", nil)
+	}
+
+	orderID := c.Params("id")
+	if orderID == "" {
+		return response.Fail(c, fiber.StatusBadRequest, "missing order id", nil)
+	}
+
+	userID, _ := c.Locals(middleware.ContextUserID).(string)
+	if err := h.service.AcceptCourierOffer(c.Context(), orderID, userID, userID); err != nil {
+		if errors.Is(err, ErrOfferAlreadyClaimed) {
+			return response.Fail(c, fiber.StatusConflict, "offer already claimed", err.Error())
+		}
+		statusCode := fiber.StatusBadRequest
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+			statusCode = fiber.StatusNotFound
+		}
+		return response.Fail(c, statusCode, "failed to accept offer", err.Error())
+	}
+	return response.OK(c, fiber.StatusOK, fiber.Map{"accepted": true, "order_id": orderID}, nil)
+}
+
+func (h *Handler) DeclineCourierOffer(c *fiber.Ctx) error {
+	role, _ := c.Locals(middleware.ContextRole).(string)
+	if role != rbac.RoleCourier {
+		return response.Fail(c, fiber.StatusForbidden, "only couriers can decline offers", nil)
+	}
+
+	orderID := c.Params("id")
+	if orderID == "" {
+		return response.Fail(c, fiber.StatusBadRequest, "missing order id", nil)
+	}
+
+	var req DeclineCourierOfferRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.Fail(c, fiber.StatusBadRequest, "invalid request body", err.Error())
+	}
+
+	userID, _ := c.Locals(middleware.ContextUserID).(string)
+	if err := h.service.DeclineCourierOffer(c.Context(), orderID, userID, userID, req.Reason); err != nil {
+		if errors.Is(err, ErrOfferAlreadyClaimed) {
+			return response.Fail(c, fiber.StatusConflict, "offer already claimed", err.Error())
+		}
+		statusCode := fiber.StatusBadRequest
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+			statusCode = fiber.StatusNotFound
+		}
+		return response.Fail(c, statusCode, "failed to decline offer", err.Error())
+	}
+	return response.OK(c, fiber.StatusOK, fiber.Map{"declined": true, "order_id": orderID}, nil)
+}
+
+// GetCourierTargetMinutes exposes the admin-configured SLA window for the
+// courier UI countdown and late-warning thresholds.
+func (h *Handler) GetCourierTargetMinutes(c *fiber.Ctx) error {
+	minutes, err := h.service.GetCourierTargetMinutes(c.Context())
+	if err != nil {
+		return response.Fail(c, fiber.StatusInternalServerError, "failed to read setting", err.Error())
+	}
+	return response.OK(c, fiber.StatusOK, CourierTargetSettings{TargetMinutes: minutes}, nil)
 }
 
 func (h *Handler) CreateSpotOrder(c *fiber.Ctx) error {
@@ -228,4 +386,22 @@ func (h *Handler) GetLoyaltyStats(c *fiber.Ctx) error {
 		return response.Fail(c, fiber.StatusInternalServerError, "failed to fetch loyalty stats", err.Error())
 	}
 	return response.OK(c, fiber.StatusOK, stats, nil)
+}
+
+// GetDailySales returns daily revenue and order counts for the last N days (default 30, max 365).
+func (h *Handler) GetDailySales(c *fiber.Ctx) error {
+	days := 30
+	if raw := strings.TrimSpace(c.Query("days")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 {
+			return response.Fail(c, fiber.StatusBadRequest, "invalid days parameter", nil)
+		}
+		days = parsed
+	}
+
+	points, err := h.service.GetDailySales(c.Context(), days)
+	if err != nil {
+		return response.Fail(c, fiber.StatusInternalServerError, "failed to fetch daily sales", err.Error())
+	}
+	return response.OK(c, fiber.StatusOK, points, nil)
 }

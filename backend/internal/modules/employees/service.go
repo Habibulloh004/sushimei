@@ -82,3 +82,18 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	}
 	return s.repo.Delete(ctx, id)
 }
+
+func (s *Service) ListCouriers(ctx context.Context, spotID string, onlyOnDuty bool) ([]ListItem, error) {
+	return s.repo.ListCouriers(ctx, strings.TrimSpace(spotID), onlyOnDuty)
+}
+
+func (s *Service) SetOnDuty(ctx context.Context, employeeID string, onDuty bool) error {
+	if strings.TrimSpace(employeeID) == "" {
+		return errors.New("employee id is required")
+	}
+	return s.repo.SetOnDuty(ctx, employeeID, onDuty)
+}
+
+func (s *Service) GetOnDuty(ctx context.Context, employeeID string) (bool, error) {
+	return s.repo.GetOnDuty(ctx, employeeID)
+}

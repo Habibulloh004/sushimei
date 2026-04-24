@@ -21,24 +21,29 @@ export function BottomNav() {
   };
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-stone-950/80 backdrop-blur-2xl border-t border-stone-100 dark:border-stone-900/50 px-6 py-4 flex items-center justify-between z-40">
-      {NAV_ITEMS.map((item) => (
-        <Link
-          key={item.href}
-          href={item.href}
-          className={`relative flex flex-col items-center gap-1 transition-all ${isActive(item.href) ? 'text-red-600' : 'text-stone-400'}`}
-        >
-          <item.icon className={`w-6 h-6 ${isActive(item.href) ? 'fill-red-600/10' : ''}`} />
-          <span className="text-[10px] font-black uppercase tracking-widest">{item.label}</span>
-          {isActive(item.href) && (
-            <motion.div
-              layoutId="bottomNavIndicator"
-              className="absolute -bottom-4 w-8 h-0.5 bg-red-600 rounded-full"
-              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-            />
-          )}
-        </Link>
-      ))}
+    <nav
+      className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-stone-950/90 backdrop-blur-2xl border-t border-stone-100 dark:border-stone-900/50 z-40"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
+      <div className="flex items-center justify-around px-2 pt-3 pb-3">
+        {NAV_ITEMS.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`relative flex flex-1 flex-col items-center gap-1 py-1 transition-all ${isActive(item.href) ? 'text-red-600' : 'text-stone-400'}`}
+          >
+            <item.icon className={`w-5 h-5 ${isActive(item.href) ? 'fill-red-600/10' : ''}`} />
+            <span className="text-[9px] font-black uppercase tracking-widest">{item.label}</span>
+            {isActive(item.href) && (
+              <motion.div
+                layoutId="bottomNavIndicator"
+                className="absolute -bottom-1 w-8 h-0.5 bg-red-600 rounded-full"
+                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              />
+            )}
+          </Link>
+        ))}
+      </div>
     </nav>
   );
 }

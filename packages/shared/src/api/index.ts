@@ -74,6 +74,10 @@ class ApiClient {
     return this.accessToken;
   }
 
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
   private buildUrl(endpoint: string, params?: Record<string, string | number | boolean | undefined>): string {
     const url = new URL(`${this.baseUrl}${endpoint}`);
     if (params) {
@@ -404,8 +408,18 @@ export interface Order {
   customer_name: string;
   customer_phone: string;
   spot_name: string;
+  assigned_courier_id?: string | null;
+  assigned_courier_name?: string | null;
+  offered_courier_id?: string | null;
+  offered_courier_name?: string | null;
+  courier_offer_status?: CourierOfferStatus;
+  courier_offer_decline_reason?: string | null;
+  courier_offered_at?: string | null;
+  courier_offer_responded_at?: string | null;
   created_at: string;
 }
+
+export type CourierOfferStatus = 'NONE' | 'PENDING' | 'ACCEPTED' | 'DECLINED';
 
 export type OrderStatus =
   | 'RECEIVED'
@@ -431,6 +445,7 @@ export interface Employee {
   last_name: string | null;
   status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
   is_active: boolean;
+  on_duty?: boolean;
   last_login_at: string | null;
   created_at: string;
 }
@@ -496,8 +511,20 @@ export interface OrderDetail {
   spot_name: string;
   spot_id: string;
   notes: string;
+  delivery_address?: Record<string, unknown> | null;
+  delivery_latitude?: number | null;
+  delivery_longitude?: number | null;
+  assigned_courier_id?: string | null;
+  assigned_courier_name?: string | null;
+  offered_courier_id?: string | null;
+  offered_courier_name?: string | null;
+  courier_offer_status?: CourierOfferStatus;
+  courier_offer_decline_reason?: string | null;
   items: OrderDetailItem[];
   created_at: string;
+  assigned_at?: string | null;
+  courier_offered_at?: string | null;
+  courier_offer_responded_at?: string | null;
 }
 
 export interface CustomerAddress {
@@ -664,6 +691,12 @@ export interface LoyaltyStats {
   total_points_used: number;
   total_points_remaining: number;
   year_over_year_change: number;
+}
+
+export interface DailySalesPoint {
+  date: string;
+  revenue: number;
+  order_count: number;
 }
 
 export interface CustomerRegisterResponse extends Partial<AuthTokens> {
@@ -851,6 +884,9 @@ export const adminApi = {
 
   getLoyaltyStats: () =>
     api.get<LoyaltyStats>('/admin/stats/loyalty'),
+
+  getDailySales: (days = 30) =>
+    api.get<DailySalesPoint[]>('/admin/stats/daily-sales', { days }),
 };
 
 // Order detail type (returned by GET /spot/orders/:id)
@@ -876,8 +912,41 @@ export interface OrderDetail {
   spot_name: string;
   spot_id: string;
   notes: string;
+  delivery_address?: Record<string, unknown> | null;
+  delivery_latitude?: number | null;
+  delivery_longitude?: number | null;
+  assigned_courier_id?: string | null;
+  assigned_courier_name?: string | null;
+  offered_courier_id?: string | null;
+  offered_courier_name?: string | null;
+  courier_offer_status?: CourierOfferStatus;
+  courier_offer_decline_reason?: string | null;
   items: OrderDetailItem[];
   created_at: string;
+  assigned_at?: string | null;
+  courier_offered_at?: string | null;
+  courier_offer_responded_at?: string | null;
+}
+
+// CourierOffer is the lightweight shape the courier app sees in the "new
+// orders" pool. Customer phone is intentionally omitted — it is revealed only
+// after the courier accepts the offer.
+export interface CourierOffer {
+  id: string;
+  order_number: string;
+  total_amount: number;
+  payment_type: 'CARD' | 'CASH';
+  offer_type: 'POOL' | 'DIRECT';
+  delivery_address?: Record<string, unknown> | null;
+  delivery_latitude?: number | null;
+  delivery_longitude?: number | null;
+  item_count: number;
+  created_at: string;
+  offered_at?: string | null;
+}
+
+export interface CourierTargetSettings {
+  target_minutes: number;
 }
 
 // Spot operator endpoints
@@ -888,11 +957,54 @@ export const spotApi = {
   getOrder: (id: string) =>
     api.get<OrderDetail>(`/spot/orders/${id}`),
 
+  listCourierOffers: () =>
+    api.get<CourierOffer[]>('/spot/courier/offers'),
+
+  acceptCourierOffer: (orderID: string) =>
+    api.post<{ accepted: boolean; order_id: string }>(
+      `/spot/courier/offers/${orderID}/accept`,
+      {},
+    ),
+
+  declineCourierOffer: (orderID: string, reason?: string) =>
+    api.post<{ declined: boolean; order_id: string }>(
+      `/spot/courier/offers/${orderID}/decline`,
+      { reason },
+    ),
+
+  getCourierTargetMinutes: () =>
+    api.get<CourierTargetSettings>('/spot/courier/settings/target-minutes'),
+
   updateOrderStatus: (id: string, status: string, reason?: string) =>
     api.patch<{ updated: boolean }>(`/spot/orders/${id}/status`, { status, reason }),
 
+  updateOrderItems: (
+    id: string,
+    items: Array<{ product_id: string; quantity: number }>,
+    notes?: string,
+  ) =>
+    api.patch<{ updated: boolean; order_id: string }>(`/spot/orders/${id}/items`, { items, notes }),
+
   createOrder: (data: OrderDraft) =>
     api.post<CreatedOrder>('/spot/orders', data),
+
+  getCouriers: (onlyOnDuty = false) =>
+    api.get<Employee[]>('/spot/couriers', onlyOnDuty ? { on_duty: 'true' } : undefined),
+
+  assignCourier: (orderID: string, courierID: string) =>
+    api.post<{ assigned: boolean; order_id: string; courier_id: string }>(
+      `/spot/orders/${orderID}/assign-courier`,
+      { courier_id: courierID },
+    ),
+
+  getMe: () =>
+    api.get<{ employee: Employee; on_duty: boolean }>('/spot/employees/me'),
+
+  getMyOnDutyStatus: () =>
+    api.get<{ on_duty: boolean }>('/spot/couriers/me/on-duty'),
+
+  setMyOnDutyStatus: (onDuty: boolean) =>
+    api.patch<{ on_duty: boolean }>('/spot/couriers/me/on-duty', { on_duty: onDuty }),
 };
 
 // Customer endpoints

@@ -7,6 +7,18 @@ import { useCart } from '@/lib/cart-context';
 import { getCartItemKey, getCartItemUnitPrice } from '@/lib/types';
 import { formatPrice } from '@/lib/format';
 
+export interface DeliveryCoords {
+  latitude: number;
+  longitude: number;
+  city?: string;
+  street?: string;
+  house?: string;
+  entrance?: string;
+  floor?: string;
+  apartment?: string;
+  delivery_notes?: string;
+}
+
 interface CheckoutContextValue {
   deliveryType: 'delivery' | 'pickup';
   setDeliveryType: (type: 'delivery' | 'pickup') => void;
@@ -20,6 +32,8 @@ interface CheckoutContextValue {
   setBonusPointsInput: (points: string) => void;
   deliveryAddress: string;
   setDeliveryAddress: (address: string) => void;
+  deliveryCoords: DeliveryCoords | null;
+  setDeliveryCoords: (coords: DeliveryCoords | null) => void;
   checkoutPreview: OrderPricing | null;
   checkoutError: string | null;
   checkoutSuccess: string | null;
@@ -49,6 +63,7 @@ export function CheckoutProvider({ children, spots }: CheckoutProviderProps) {
   const [promoCodeInput, setPromoCodeInput] = useState('');
   const [bonusPointsInput, setBonusPointsInput] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliveryCoords, setDeliveryCoords] = useState<DeliveryCoords | null>(null);
   const [checkoutPreview, setCheckoutPreview] = useState<OrderPricing | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [checkoutSuccess, setCheckoutSuccess] = useState<string | null>(null);
@@ -60,15 +75,32 @@ export function CheckoutProvider({ children, spots }: CheckoutProviderProps) {
 
     const parsedBonusPoints = bonusPointsInput.trim() === '' ? undefined : Number.parseInt(bonusPointsInput.trim(), 10);
 
+    let deliveryAddressPayload: Record<string, unknown> | undefined;
+    if (deliveryType === 'delivery' && deliveryAddress.trim()) {
+      deliveryAddressPayload = { line1: deliveryAddress.trim() };
+      if (deliveryCoords) {
+        deliveryAddressPayload = {
+          ...deliveryAddressPayload,
+          latitude: deliveryCoords.latitude,
+          longitude: deliveryCoords.longitude,
+          city: deliveryCoords.city,
+          street: deliveryCoords.street,
+          house: deliveryCoords.house,
+          entrance: deliveryCoords.entrance,
+          floor: deliveryCoords.floor,
+          apartment: deliveryCoords.apartment,
+          delivery_notes: deliveryCoords.delivery_notes,
+        };
+      }
+    }
+
     return {
       spot_id: selectedSpotId,
       order_type: deliveryType === 'delivery' ? 'DELIVERY' : 'PICKUP',
       payment_type: paymentType,
       customer_name: undefined,
       customer_phone: user?.phone || undefined,
-      delivery_address: deliveryType === 'delivery' && deliveryAddress.trim()
-        ? { line1: deliveryAddress.trim() }
-        : undefined,
+      delivery_address: deliveryAddressPayload,
       promo_code: promoCodeInput.trim() ? promoCodeInput.trim().toUpperCase() : undefined,
       bonus_points_to_spend: Number.isInteger(parsedBonusPoints) && parsedBonusPoints && parsedBonusPoints > 0 ? parsedBonusPoints : undefined,
       items: cart.map((item) => ({
@@ -78,7 +110,7 @@ export function CheckoutProvider({ children, spots }: CheckoutProviderProps) {
         modifier_option_ids: item.modifiers.map(m => m.optionId),
       })),
     };
-  }, [cart, selectedSpotId, deliveryType, paymentType, bonusPointsInput, deliveryAddress, promoCodeInput, user?.phone]);
+  }, [cart, selectedSpotId, deliveryType, paymentType, bonusPointsInput, deliveryAddress, deliveryCoords, promoCodeInput, user?.phone]);
 
   // Debounced preview
   useEffect(() => {
@@ -160,6 +192,7 @@ export function CheckoutProvider({ children, spots }: CheckoutProviderProps) {
     setPromoCodeInput('');
     setBonusPointsInput('');
     setDeliveryAddress('');
+    setDeliveryCoords(null);
     setIsCartOpen(false);
     router.push('/account');
   }, [isAuthenticated, buildOrderDraft, deliveryAddress, router, clearCart, setIsCartOpen]);
@@ -181,6 +214,7 @@ export function CheckoutProvider({ children, spots }: CheckoutProviderProps) {
       promoCodeInput, setPromoCodeInput,
       bonusPointsInput, setBonusPointsInput,
       deliveryAddress, setDeliveryAddress,
+      deliveryCoords, setDeliveryCoords,
       checkoutPreview,
       checkoutError,
       checkoutSuccess,

@@ -8,10 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"sushimei/backend/internal/platform/realtime"
 )
 
 type pricingProduct struct {
@@ -100,6 +102,18 @@ func (s *Service) Create(ctx context.Context, customerID, createdByEmployeeID st
 	orderID, orderNumber, err := s.repo.CreatePricedOrder(ctx, priced, createdByEmployeeID, req)
 	if err != nil {
 		return nil, err
+	}
+
+	if s.hub != nil && priced.spot != nil {
+		event := realtime.Event{
+			Type:    realtime.EventOrderCreated,
+			OrderID: orderID,
+			Status:  "RECEIVED",
+		}
+		s.hub.PublishSpot(priced.spot.ID, event)
+		if priced.customer != nil {
+			s.hub.PublishCustomer(priced.customer.ID, event)
+		}
 	}
 
 	return &CreateOrderResponse{
@@ -578,6 +592,8 @@ func (r *Repository) CreatePricedOrder(ctx context.Context, priced *pricedOrderC
 	}
 
 	deliveryAddressJSON, _ := json.Marshal(req.DeliveryAddress)
+	deliveryLat, deliveryLng := extractCoordinates(req.DeliveryAddress)
+
 	var promoID *string
 	if priced.promo != nil {
 		promoID = &priced.promo.ID
@@ -591,11 +607,12 @@ func (r *Repository) CreatePricedOrder(ctx context.Context, priced *pricedOrderC
 		INSERT INTO orders (
 			order_number, customer_id, spot_id, status, order_type, payment_type,
 			customer_name, customer_phone, delivery_address,
+			delivery_latitude, delivery_longitude,
 			subtotal_amount, promo_discount_amount, bonus_spent_amount,
 			delivery_fee_amount, total_amount, promo_code_id, bonus_earned_points,
 			notes, created_by_employee_id
 		)
-		VALUES ($1, $2, $3, 'RECEIVED', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		VALUES ($1, $2, $3, 'RECEIVED', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 		RETURNING id::text
 	`
 
@@ -614,6 +631,8 @@ func (r *Repository) CreatePricedOrder(ctx context.Context, priced *pricedOrderC
 		customerName,
 		customerPhone,
 		deliveryAddressJSON,
+		deliveryLat,
+		deliveryLng,
 		priced.pricing.SubtotalAmount,
 		priced.pricing.PromoDiscountAmount,
 		priced.pricing.BonusSpentAmount,
@@ -792,6 +811,49 @@ func minInt(values ...int) int {
 		}
 	}
 	return current
+}
+
+// extractCoordinates pulls latitude/longitude from the delivery_address payload.
+// Customer/staff apps may send them as floats or strings under multiple key aliases.
+func extractCoordinates(addr map[string]any) (any, any) {
+	if len(addr) == 0 {
+		return nil, nil
+	}
+	lat := readCoord(addr, "latitude", "lat")
+	lng := readCoord(addr, "longitude", "lng", "lon")
+	if lat == nil || lng == nil {
+		return nil, nil
+	}
+	return lat, lng
+}
+
+func readCoord(addr map[string]any, keys ...string) any {
+	for _, k := range keys {
+		raw, ok := addr[k]
+		if !ok || raw == nil {
+			continue
+		}
+		switch v := raw.(type) {
+		case float64:
+			return v
+		case float32:
+			return float64(v)
+		case int:
+			return float64(v)
+		case int64:
+			return float64(v)
+		case string:
+			trimmed := strings.TrimSpace(v)
+			if trimmed == "" {
+				continue
+			}
+			f, err := strconv.ParseFloat(trimmed, 64)
+			if err == nil {
+				return f
+			}
+		}
+	}
+	return nil
 }
 
 func generateOrderNumber() (string, error) {

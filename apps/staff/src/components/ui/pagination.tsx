@@ -48,7 +48,7 @@ function Pagination({
               onClick={() => onPageChange(i + 1)}
               className={`h-9 w-9 rounded-xl text-xs font-black transition-all ${
                 currentPage === i + 1
-                  ? "bg-red-600 text-white shadow-lg shadow-red-600/20"
+                  ? "bg-[#5775FF] text-white shadow-lg shadow-[#5775FF]/20"
                   : "text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800"
               }`}
             >

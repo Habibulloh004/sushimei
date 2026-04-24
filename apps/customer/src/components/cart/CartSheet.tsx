@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
 import {
   ShoppingBag, Plus, Minus, X, ChevronRight,
-  Truck, Store, CreditCard,
+  Truck, Store, CreditCard, MapPin, CheckCircle2,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTitle } from '../ui/sheet';
 import { Button } from '../ui/button';
@@ -13,8 +13,9 @@ import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { EmptyState } from '../shared/EmptyState';
 import { useCart } from '@/lib/cart-context';
 import { CheckoutProvider, useCheckout } from '@/lib/checkout-context';
-import { useAuth } from '@/lib/api';
+import { useAuth, customerApi, type CustomerAddress } from '@/lib/api';
 import { Spot, ModifierGroup } from '@/lib/api';
+import AddressMapPickerClient from '../account/AddressMapPickerClient';
 import { getCartItemKey, getCartItemUnitPrice } from '@/lib/types';
 import { getSafeName } from '@/lib/helpers';
 import { formatPrice } from '@/lib/format';
@@ -182,8 +183,24 @@ function CartBrowseContent({ onCheckout }: { onCheckout: () => void }) {
   );
 }
 
+function formatSavedAddress(addr: CustomerAddress): string {
+  const parts: string[] = [];
+  if (addr.city) parts.push(addr.city);
+  const streetHouse = [addr.street, addr.house].filter(Boolean).join(' ');
+  if (streetHouse) parts.push(streetHouse);
+  const extras: string[] = [];
+  if (addr.entrance) extras.push(`entr. ${addr.entrance}`);
+  if (addr.floor) extras.push(`fl. ${addr.floor}`);
+  if (addr.apartment) extras.push(`apt. ${addr.apartment}`);
+  if (extras.length) parts.push(extras.join(', '));
+  if (addr.delivery_notes) parts.push(addr.delivery_notes);
+  return parts.filter(Boolean).join(', ');
+}
+
 function CheckoutContent({ spots, onBack }: { spots: Spot[]; onBack: () => void }) {
-  const { totalPrice } = useCart();
+  const router = useRouter();
+  const { totalPrice, setIsCartOpen } = useCart();
+  const { isAuthenticated } = useAuth();
   const {
     deliveryType, setDeliveryType,
     paymentType, setPaymentType,
@@ -191,12 +208,116 @@ function CheckoutContent({ spots, onBack }: { spots: Spot[]; onBack: () => void 
     promoCodeInput, setPromoCodeInput,
     bonusPointsInput, setBonusPointsInput,
     deliveryAddress, setDeliveryAddress,
+    deliveryCoords, setDeliveryCoords,
     checkoutPreview, checkoutError, checkoutSuccess,
     checkoutLoading, placingOrder,
     handlePlaceOrder,
   } = useCheckout();
 
+  const [savedAddresses, setSavedAddresses] = useState<CustomerAddress[]>([]);
+  const [addressesLoading, setAddressesLoading] = useState(false);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [useCustomAddress, setUseCustomAddress] = useState(false);
+  const [customLat, setCustomLat] = useState<number | null>(null);
+  const [customLng, setCustomLng] = useState<number | null>(null);
+  const [customCity, setCustomCity] = useState('');
+  const [customStreet, setCustomStreet] = useState('');
+  const [customHouse, setCustomHouse] = useState('');
+  const [customEntrance, setCustomEntrance] = useState('');
+  const [customFloor, setCustomFloor] = useState('');
+  const [customApartment, setCustomApartment] = useState('');
+
   const selectedSpot = spots.find((s) => s.id === selectedSpotId) || null;
+
+  useEffect(() => {
+    if (!isAuthenticated || deliveryType !== 'delivery') return;
+    let cancelled = false;
+    setAddressesLoading(true);
+    customerApi.getAddresses().then(res => {
+      if (cancelled) return;
+      if (res.success && res.data) {
+        setSavedAddresses(res.data);
+        // Auto-select default address if user hasn't picked one yet
+        if (!selectedAddressId && !useCustomAddress && res.data.length > 0) {
+          const def = res.data.find(a => a.is_default) || res.data[0];
+          pickSavedAddress(def);
+        }
+      }
+    }).finally(() => {
+      if (!cancelled) setAddressesLoading(false);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, deliveryType]);
+
+  const pickSavedAddress = (addr: CustomerAddress) => {
+    setSelectedAddressId(addr.id);
+    setUseCustomAddress(false);
+    setDeliveryAddress(formatSavedAddress(addr));
+    if (addr.latitude != null && addr.longitude != null) {
+      setDeliveryCoords({
+        latitude: addr.latitude,
+        longitude: addr.longitude,
+        city: addr.city || undefined,
+        street: addr.street || undefined,
+        house: addr.house || undefined,
+        entrance: addr.entrance || undefined,
+        floor: addr.floor || undefined,
+        apartment: addr.apartment || undefined,
+        delivery_notes: addr.delivery_notes || undefined,
+      });
+    } else {
+      setDeliveryCoords(null);
+    }
+  };
+
+  const pickCustomAddress = () => {
+    setSelectedAddressId(null);
+    setUseCustomAddress(true);
+    setDeliveryCoords(null);
+  };
+
+  // When custom fields change, sync deliveryAddress text and coords
+  useEffect(() => {
+    if (!useCustomAddress) return;
+    const parts: string[] = [];
+    if (customCity) parts.push(customCity);
+    const streetHouse = [customStreet, customHouse].filter(Boolean).join(' ');
+    if (streetHouse) parts.push(streetHouse);
+    const extras: string[] = [];
+    if (customEntrance) extras.push(`entr. ${customEntrance}`);
+    if (customFloor) extras.push(`fl. ${customFloor}`);
+    if (customApartment) extras.push(`apt. ${customApartment}`);
+    if (extras.length) parts.push(extras.join(', '));
+    const text = parts.filter(Boolean).join(', ');
+    if (text) setDeliveryAddress(text);
+
+    if (customLat != null && customLng != null) {
+      setDeliveryCoords({
+        latitude: customLat,
+        longitude: customLng,
+        city: customCity || undefined,
+        street: customStreet || undefined,
+        house: customHouse || undefined,
+        entrance: customEntrance || undefined,
+        floor: customFloor || undefined,
+        apartment: customApartment || undefined,
+      });
+    } else {
+      setDeliveryCoords(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useCustomAddress, customLat, customLng, customCity, customStreet, customHouse, customEntrance, customFloor, customApartment]);
+
+  const handleMapChange = (lat: number, lng: number, geocoded?: { city?: string; street?: string; house?: string }) => {
+    setCustomLat(lat);
+    setCustomLng(lng);
+    if (geocoded) {
+      if (geocoded.city && !customCity) setCustomCity(geocoded.city);
+      if (geocoded.street && !customStreet) setCustomStreet(geocoded.street);
+      if (geocoded.house && !customHouse) setCustomHouse(geocoded.house);
+    }
+  };
 
   return (
     <>
@@ -239,14 +360,147 @@ function CheckoutContent({ spots, onBack }: { spots: Spot[]; onBack: () => void 
         {/* Delivery address */}
         {deliveryType === 'delivery' && (
           <motion.div className="p-5 rounded-[1.5rem] border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-sm space-y-3" variants={itemVariants}>
-            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-stone-400">Delivery Address</p>
-            <textarea
-              value={deliveryAddress}
-              onChange={(e) => setDeliveryAddress(e.target.value)}
-              rows={3}
-              placeholder="Street, building, apartment, delivery note"
-              className="w-full rounded-xl border border-stone-200 dark:border-stone-800 bg-transparent px-4 py-3 text-sm font-medium resize-none"
-            />
+            <div className="flex items-center justify-between">
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-stone-400">Delivery Address</p>
+              <button
+                type="button"
+                onClick={() => { setIsCartOpen(false); router.push('/account?tab=addresses'); }}
+                className="text-[10px] font-black uppercase tracking-widest text-red-600 hover:text-red-700"
+              >
+                + Add new
+              </button>
+            </div>
+
+            {addressesLoading ? (
+              <p className="text-xs text-stone-500">Loading saved addresses...</p>
+            ) : savedAddresses.length === 0 && !useCustomAddress ? (
+              <div className="rounded-xl border border-dashed border-stone-300 dark:border-stone-700 px-4 py-4 space-y-2">
+                <p className="text-xs text-stone-500">No saved addresses yet.</p>
+                <button
+                  type="button"
+                  onClick={pickCustomAddress}
+                  className="text-[11px] font-black uppercase tracking-widest text-red-600"
+                >
+                  Enter address manually
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {savedAddresses.map(addr => {
+                  const picked = selectedAddressId === addr.id;
+                  const hasCoords = addr.latitude != null && addr.longitude != null;
+                  return (
+                    <button
+                      key={addr.id}
+                      type="button"
+                      onClick={() => pickSavedAddress(addr)}
+                      className={`w-full text-left rounded-xl border px-4 py-3 flex items-start gap-3 transition ${
+                        picked
+                          ? 'border-red-600 bg-red-50 dark:bg-red-950/20'
+                          : 'border-stone-200 dark:border-stone-800 hover:border-stone-300'
+                      }`}
+                    >
+                      <MapPin className={`w-4 h-4 shrink-0 mt-0.5 ${picked ? 'text-red-600' : 'text-stone-400'}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-black tracking-tight truncate">
+                            {addr.label || 'Address'}
+                          </p>
+                          {addr.is_default && (
+                            <span className="text-[9px] font-black uppercase tracking-widest text-stone-400">Default</span>
+                          )}
+                          {!hasCoords && (
+                            <span className="text-[9px] font-black uppercase tracking-widest text-amber-600">No GPS</span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-stone-500 mt-0.5 wrap-break-word">
+                          {formatSavedAddress(addr) || '—'}
+                        </p>
+                      </div>
+                      {picked && <CheckCircle2 className="w-4 h-4 text-red-600 shrink-0" />}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={pickCustomAddress}
+                  className={`w-full text-left rounded-xl border px-4 py-3 text-xs font-black uppercase tracking-widest transition ${
+                    useCustomAddress
+                      ? 'border-red-600 text-red-600 bg-red-50 dark:bg-red-950/20'
+                      : 'border-dashed border-stone-300 dark:border-stone-700 text-stone-500 hover:border-stone-400'
+                  }`}
+                >
+                  Use a different address
+                </button>
+              </div>
+            )}
+
+            {(useCustomAddress || savedAddresses.length === 0) && (
+              <div className="space-y-3">
+                <div className="h-64 w-full">
+                  <AddressMapPickerClient
+                    latitude={customLat}
+                    longitude={customLng}
+                    onChange={handleMapChange}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    value={customCity}
+                    onChange={(e) => setCustomCity(e.target.value)}
+                    placeholder="City"
+                    className="col-span-2 rounded-xl border border-stone-200 dark:border-stone-800 bg-transparent px-3 py-2 text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={customStreet}
+                    onChange={(e) => setCustomStreet(e.target.value)}
+                    placeholder="Street"
+                    className="rounded-xl border border-stone-200 dark:border-stone-800 bg-transparent px-3 py-2 text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={customHouse}
+                    onChange={(e) => setCustomHouse(e.target.value)}
+                    placeholder="House"
+                    className="rounded-xl border border-stone-200 dark:border-stone-800 bg-transparent px-3 py-2 text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={customEntrance}
+                    onChange={(e) => setCustomEntrance(e.target.value)}
+                    placeholder="Entrance"
+                    className="rounded-xl border border-stone-200 dark:border-stone-800 bg-transparent px-3 py-2 text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={customFloor}
+                    onChange={(e) => setCustomFloor(e.target.value)}
+                    placeholder="Floor"
+                    className="rounded-xl border border-stone-200 dark:border-stone-800 bg-transparent px-3 py-2 text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={customApartment}
+                    onChange={(e) => setCustomApartment(e.target.value)}
+                    placeholder="Apartment"
+                    className="col-span-2 rounded-xl border border-stone-200 dark:border-stone-800 bg-transparent px-3 py-2 text-sm"
+                  />
+                </div>
+
+                {customLat != null && customLng != null ? (
+                  <p className="text-[10px] text-emerald-600 font-medium">
+                    ✓ Koordinata saqlandi ({customLat.toFixed(5)}, {customLng.toFixed(5)}) — kuryer to'g'ri marshrut ko'radi.
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-amber-600 font-medium">
+                    Xaritadan manzilni bosing — kuryer Yandex Maps orqali marshrutni ko'radi.
+                  </p>
+                )}
+              </div>
+            )}
           </motion.div>
         )}
 

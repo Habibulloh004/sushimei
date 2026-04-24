@@ -2,7 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { customerApi, Customer, CustomerAddress, CustomerAddressCreate, CustomerBonusActivity, Order, OrderDetail, useAuth } from '@/lib/api';
+import { customerApi, Customer, CustomerAddress, CustomerAddressCreate, CustomerBonusActivity, Order, OrderDetail, useAuth, useOrderStream } from '@/lib/api';
 import { useCart } from '@/lib/cart-context';
 import { toast } from 'sonner';
 
@@ -25,6 +25,8 @@ interface AddressFormState {
   apartment: string;
   delivery_notes: string;
   is_default: boolean;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 interface AccountCenterContextValue {
@@ -98,6 +100,8 @@ const createEmptyAddressForm = (): AddressFormState => ({
   apartment: '',
   delivery_notes: '',
   is_default: false,
+  latitude: null,
+  longitude: null,
 });
 
 const normalizeAddressPayload = (draft: AddressFormState): CustomerAddressCreate => ({
@@ -110,6 +114,8 @@ const normalizeAddressPayload = (draft: AddressFormState): CustomerAddressCreate
   apartment: draft.apartment.trim() || undefined,
   delivery_notes: draft.delivery_notes.trim() || undefined,
   is_default: draft.is_default,
+  latitude: draft.latitude ?? undefined,
+  longitude: draft.longitude ?? undefined,
 });
 
 const buildProfileForm = (profile: Customer | null): ProfileFormState => ({
@@ -258,6 +264,16 @@ export function AccountCenterProvider({ children }: { children: React.ReactNode 
     refreshCustomerData().finally(() => setProfileLoading(false));
   }, [applySnapshot, clearCache, isAuthenticated, readCache, refreshCustomerData, user?.id]);
 
+  // Realtime: refresh profile + orders + bonus on every server event tied to
+  // this customer. This keeps the account center in sync when kitchen moves
+  // the order forward, cashier assigns a courier, or courier marks delivered.
+  useOrderStream({
+    enabled: isAuthenticated,
+    onEvent: () => {
+      refreshCustomerData();
+    },
+  });
+
   const customerDisplayName = useMemo(() => {
     if (!profile) return '';
     const fullName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
@@ -284,6 +300,8 @@ export function AccountCenterProvider({ children }: { children: React.ReactNode 
       apartment: address.apartment || '',
       delivery_notes: address.delivery_notes || '',
       is_default: address.is_default,
+      latitude: address.latitude ?? null,
+      longitude: address.longitude ?? null,
     });
     setAddressError(null);
   };
